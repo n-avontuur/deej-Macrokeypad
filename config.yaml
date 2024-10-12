@@ -14,21 +14,52 @@ slider_mapping:
   2: spotify.exe
   3: rocketleague.exe
   4: discord.exe
+  5: opera
 
 
-# build up of command [Type] [Task] [Target]
+CommandOptions:
+  0:
+    type: Null
+    actions: Null # No actions for Page
+    targets: Null  # No targets for Page
+  1:
+    type: Application
+    actions:
+      0: open
+      1: close
+    targets:
+      0: EscapeFromTarkov
+      1: Minecraft
+      2: discord
+  2:
+    type: Windowskey
+    actions: {}  # No actions for Windowskey
+    targets: {}  # No targets for Windowskey
+  3:
+    type: Audio
+    actions: 
+      0: Start
+      1: Stop
+      2: Pause
+    targets: {}  # No targets for Audio
+
+
+
+
 Pages:
   - name: GamingPage
     grid:
-      - [ { icon: Discord, command: Application open discord }, { icon: BattleStageGames, command: Application open EscapeFromTarkov }, { icon: Minecraft, command: Application open Minecraft } ]
-      - [ { icon: WindowsStart, command: Windowskey press }, { icon: Spotify, command: Application open Spotify }, { icon: Outplayed, command: Application open Outplayed } ]
-      - [ { icon: Start, command: Audio Start }, { icon: Pause, command: Audio Pause }, { icon: Volume, command: Page open VolumeControl } ]
-      - [ { icon: Microfoon, command: NULL }, { icon: NULL, command: NULL }, { icon: NULL, command: NULL } ]
+      - [ { icon: Discord, command: [1, 1, 3] }, { icon: BattleStageGames, command: [1, 1, 1] }, { icon: Minecraft, command: [1, 1, 2] } ]  # build up of command [Type, Task, Target]
+      - [ { icon: WindowsStart, command: [2, 1, 1] }, { icon: Spotify, command: [1, 1, 1] }, { icon: Outplayed, command: [1, 1, 1] } ]
+      - [ { icon: Start, command: [3, 1, 1] }, { icon: Pause, command: [3, 3, 1] }, { icon: Volume, command: [0, 0, 0] } ]
+      - [ { icon: Microfoon, command: [1, 1, 1] }, { icon: NULL, command: [0, 0, 0] }, { icon: NULL, command: [0, 0, 0] } ]
+
   - name: VolumeControlPage
     volume_controls:
-      spotify.exe: 75    # Represents Spotify volume percentage
-      master: 50         # Represents master volume percentage
-      opera: 60          # Represents Opera volume percentage
+      1: 75
+      0: 50
+      5: 60
+
 
 
 # set this to true if you want the controls inverted (i.e. top is 0%, bottom is 100%)
