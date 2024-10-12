@@ -40,7 +40,6 @@ void Communication::sendPacket(uint8_t command, uint8_t* payload, uint8_t length
     Serial.println();
 }
 
-
 void Communication::receivePackage() {
     if (Serial.available() > 0) {
         uint8_t receivedByte = Serial.read();
@@ -94,15 +93,13 @@ void Communication::receivePackage() {
     }
 }
 
-
-
-
 void Communication::processCommand(uint8_t command, uint8_t* payload, uint8_t length) {
     Serial.print("Processing Command: ");
     Serial.println(command, HEX);
 
     switch (command) {
         case RECEIVED_CONFIG:
+            configRecieved = true;
             Serial.println("Received Config Command");
             // Process RECEIVED_CONFIG
             break;
@@ -117,7 +114,6 @@ void Communication::processCommand(uint8_t command, uint8_t* payload, uint8_t le
         // Add more cases as needed
     }
 }
-
 
 void Communication::sendAcknowledge(bool success) {
     uint8_t ackPayload[1];

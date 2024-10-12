@@ -14,14 +14,18 @@ void setup() {
     // Print a message to the Serial Monitor
     Serial.println("Communication Test Starting...");
 
+    while (!comm.configRecieved) {
+        comm.receivePackage();
+    }
+
 
 }
 
 
 void loop() {
         // Example payload: the string "Spotify"
-    uint8_t simplePayload[] = {" "};
-    comm.sendPacket(0x01, simplePayload, 1);
+    // uint8_t simplePayload[] = {" "};
+    // comm.sendPacket(0x01, simplePayload, 1);
 
     delay(5000);
     

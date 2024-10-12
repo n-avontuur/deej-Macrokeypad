@@ -26,6 +26,7 @@ public:
     Communication();  // Constructor declaration
     void sendPacket(uint8_t command, uint8_t* payload, uint8_t length);
     void receivePackage();
+    bool configRecieved = false;
 
 private:
     void processCommand(uint8_t command, uint8_t* payload, uint8_t length);

@@ -418,27 +418,77 @@ func (sio *SerialIO) sendPacket(command CommandType, payload []byte) error {
 	return nil
 }
 
-func (sio *SerialIO) initializeConnection() {
-	// Access the first page
+func (sio *SerialIO) initializeConnection() error {
+	const maxPacketSize = 64 // Set this according to the maximum payload size Arduino can handle
+	serializedPages, err := json.Marshal(sio.deej.config.Pages)
+	if err != nil {
+		sio.logger.Warn("Failed to serialize configuration data", "error", err)
+		return err
+	}
 
-	if len(sio.deej.config.Pages) > 0 {
-		firstPage := sio.deej.config.Pages[0]
-		fmt.Printf("First Page Name: %s\n", firstPage.Name)
-		if len(firstPage.Grid) > 0 {
-			fmt.Println("Grid content:")
-			for _, row := range firstPage.Grid {
-				for _, item := range row {
-					fmt.Printf("  Icon: %s, Command: %s\n", item.Icon, item.Command)
-				}
+	// Divide serializedPages into chunks if necessary
+	for i := 0; i < len(serializedPages); i += maxPacketSize {
+		end := i + maxPacketSize
+		if end > len(serializedPages) {
+			end = len(serializedPages)
+		}
+
+		// Extract chunk of payload
+		payloadChunk := serializedPages[i:end]
+
+		// Send the payload chunk to Arduino
+		sio.logger.Info("Sending configuration packet to Arduino (chunked)")
+		err := sio.sendPacket(CONFIG_NEEDED, payloadChunk)
+		if err != nil {
+			sio.logger.Warn("Failed to send configuration packet chunk", "error", err)
+			return err
+		}
+
+		// Wait for acknowledgment after sending each chunk
+		ackChannel := make(chan bool)
+		go sio.listenForAck(ackChannel)
+
+		// Wait for acknowledgment with a timeout
+		select {
+		case ack := <-ackChannel:
+			if ack {
+				sio.logger.Info("Received acknowledgment for this chunk")
+			} else {
+				sio.logger.Warn("Failed to receive acknowledgment for this chunk")
+				return errors.New("failed to receive valid acknowledgment from Arduino for a chunk")
 			}
-		} else if len(firstPage.VolumeControls) > 0 {
-			fmt.Println("Volume controls:")
-			for app, volume := range firstPage.VolumeControls {
-				fmt.Printf("  %s: %d%%\n", app, volume)
+		case <-time.After(5 * time.Second): // 5-second timeout
+			return errors.New("timeout waiting for acknowledgment from Arduino")
+		}
+	}
+
+	sio.logger.Info("Connection initialized successfully with all configuration data")
+	return nil
+}
+
+func (sio *SerialIO) listenForAck(ackChannel chan bool) {
+	namedLogger := sio.logger.Named(strings.ToLower(sio.connOptions.PortName))
+	connReader := bufio.NewReader(sio.conn)
+	lineChannel := sio.readLine(namedLogger, connReader)
+
+	for {
+		select {
+		case <-sio.stopChannel:
+			sio.close(namedLogger)
+			return
+		case line := <-lineChannel:
+			// Parse incoming packet/line
+			command, payload, MatchCRC := ParsePacket([]byte(line))
+			if CommandType(command) == ACKNOWLEDGE && len(payload) > 0 && payload[0] == 1 && MatchCRC {
+				sio.logger.Info("Received acknowledgment from Arduino")
+				ackChannel <- true
+				return
+			} else if CommandType(command) == ACKNOWLEDGE && len(payload) > 0 && payload[0] == 0 && !MatchCRC {
+				sio.logger.Warn("Arduino reported an error in acknowledgment")
+				ackChannel <- false
+				return
 			}
 		}
-	} else {
-		fmt.Printf("No pages found. %s \n", sio.deej.config.Pages)
 	}
 }
 
