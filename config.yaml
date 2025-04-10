@@ -49,10 +49,10 @@ CommandOptions:
 Pages:
   - name: GamingPage
     grid:
-      - [ { icon: Discord, command: [1, 1, 3] }, { icon: BattleStageGames, command: [1, 1, 1] }, { icon: Minecraft, command: [1, 1, 2] } ]  # build up of command [Type, Task, Target]
-      - [ { icon: WindowsStart, command: [2, 1, 1] }, { icon: Spotify, command: [1, 1, 1] }, { icon: Outplayed, command: [1, 1, 1] } ]
-      - [ { icon: Start, command: [3, 1, 1] }, { icon: Pause, command: [3, 3, 1] }, { icon: Volume, command: [0, 0, 0] } ]
-      - [ { icon: Microfoon, command: [1, 1, 1] }, { icon: NULL, command: [0, 0, 0] }, { icon: NULL, command: [0, 0, 0] } ]
+      - [ { icon: Discord, command: "1,1,3" }, { icon: BattleStageGames, command: "1,1,1" }, { icon: Minecraft, command: "1,1,2" } ]
+      - [ { icon: WindowsStart, command: "2,1,1" }, { icon: Spotify, command: "1,1,1" }, { icon: Outplayed, command: "1,1,1" } ]
+      - [ { icon: Start, command: "3,1,1" }, { icon: Pause, command: "3,3,1" }, { icon: Volume, command: "0,0,0" } ]
+      - [ { icon: Microfoon, command: "1,1,1" }, { icon: NULL, command: "0,0,0" }, { icon: NULL, command: "0,0,0" } ]
 
   - name: VolumeControlPage
     volume_controls:
@@ -66,7 +66,7 @@ Pages:
 invert_sliders: false
 
 # settings for connecting to the arduino board
-com_port: COM9
+com_port: COM4
 baud_rate: 9600
 
 # adjust the amount of signal noise reduction depending on your hardware quality

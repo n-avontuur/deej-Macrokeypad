@@ -149,35 +149,32 @@ func (sio *SerialIO) setupOnConfigReload() {
 	const stopDelay = 50 * time.Millisecond
 
 	go func() {
-		for {
-			select {
-			case <-configReloadedChannel:
+		for range configReloadedChannel {
 
-				// make any config reload unset our slider number to ensure process volumes are being re-set
-				// (the next read line will emit SliderMoveEvent instances for all sliders)\
-				// this needs to happen after a small delay, because the session map will also re-acquire sessions
-				// whenever the config file is reloaded, and we don't want it to receive these move events while the map
-				// is still cleared. this is kind of ugly, but shouldn't cause any issues
-				go func() {
-					<-time.After(stopDelay)
-					sio.lastKnownNumSliders = 0
-				}()
+			// make any config reload unset our slider number to ensure process volumes are being re-set
+			// (the next read line will emit SliderMoveEvent instances for all sliders)\
+			// this needs to happen after a small delay, because the session map will also re-acquire sessions
+			// whenever the config file is reloaded, and we don't want it to receive these move events while the map
+			// is still cleared. this is kind of ugly, but shouldn't cause any issues
+			go func() {
+				<-time.After(stopDelay)
+				sio.lastKnownNumSliders = 0
+			}()
 
-				// if connection params have changed, attempt to stop and start the connection
-				if sio.deej.config.ConnectionInfo.COMPort != sio.connOptions.PortName ||
-					uint(sio.deej.config.ConnectionInfo.BaudRate) != sio.connOptions.BaudRate {
+			// if connection params have changed, attempt to stop and start the connection
+			if sio.deej.config.ConnectionInfo.COMPort != sio.connOptions.PortName ||
+				uint(sio.deej.config.ConnectionInfo.BaudRate) != sio.connOptions.BaudRate {
 
-					sio.logger.Info("Detected change in connection parameters, attempting to renew connection")
-					sio.Stop()
+				sio.logger.Info("Detected change in connection parameters, attempting to renew connection")
+				sio.Stop()
 
-					// let the connection close
-					<-time.After(stopDelay)
+				// let the connection close
+				<-time.After(stopDelay)
 
-					if err := sio.Start(); err != nil {
-						sio.logger.Warnw("Failed to renew connection after parameter change", "error", err)
-					} else {
-						sio.logger.Debug("Renewed connection successfully")
-					}
+				if err := sio.Start(); err != nil {
+					sio.logger.Warnw("Failed to renew connection after parameter change", "error", err)
+				} else {
+					sio.logger.Debug("Renewed connection successfully")
 				}
 			}
 		}
@@ -294,7 +291,7 @@ func (sio *SerialIO) handleLine(logger *zap.SugaredLogger, line string) {
 	}
 
 	command, payload, MatchCRC := ParsePacket(bytes)
-	fmt.Printf("command, payload, MatchCRC : %x, %x, %s", command, payload, MatchCRC)
+	//fmt.Printf("command, payload, MatchCRC : %x, %x, %s", command, payload, MatchCRC)
 	if MatchCRC {
 		CorrectMatch := []byte{1}
 		sio.sendPacket(ACKNOWLEDGE, CorrectMatch)
@@ -395,8 +392,7 @@ func (sio *SerialIO) sendPacket(command CommandType, payload []byte) error {
 	}
 
 	packetLength := uint8(len(payload) + 2) // Command + CRC
-	packet := make([]byte, packetLength+2)  // Header + Length + Command + Payload + CRC + Footer
-
+	packet := make([]byte, packetLength+3)  // Header + Length + Command + Payload + CRC + Footer
 	packet[0] = PACKET_HEADER
 	packet[1] = packetLength
 	packet[2] = byte(command)
@@ -405,8 +401,10 @@ func (sio *SerialIO) sendPacket(command CommandType, payload []byte) error {
 	// Calculate CRC for the packet
 	crc := crc8.Checksum(packet[2:packetLength+1], crc8.MakeTable(crc8.CRC8_MAXIM))
 	packet[3+len(payload)] = crc
-
 	packet[4+len(payload)] = PACKET_FOOTER
+
+	// Log the packet details
+	sio.logger.Debugw("Sending packet", "command", command, "payload", payload, "crc", crc)
 
 	// Send the packet over the serial connection
 	if _, err := sio.conn.Write(packet); err != nil {
@@ -414,7 +412,7 @@ func (sio *SerialIO) sendPacket(command CommandType, payload []byte) error {
 		return err
 	}
 
-	sio.logger.Debugw("Sent packet", "command", command, "payload", payload)
+	sio.logger.Debug("Packet sent successfully")
 	return nil
 }
 
@@ -436,6 +434,9 @@ func (sio *SerialIO) initializeConnection() error {
 		// Extract chunk of payload
 		payloadChunk := serializedPages[i:end]
 
+		// Log the chunk being sent
+		sio.logger.Info("Preparing to send configuration packet chunk", "start", i, "end", end, "chunk", string(payloadChunk))
+
 		// Send the payload chunk to Arduino
 		sio.logger.Info("Sending configuration packet to Arduino (chunked)")
 		err := sio.sendPacket(CONFIG_NEEDED, payloadChunk)
@@ -444,21 +445,35 @@ func (sio *SerialIO) initializeConnection() error {
 			return err
 		}
 
-		// Wait for acknowledgment after sending each chunk
-		ackChannel := make(chan bool)
-		go sio.listenForAck(ackChannel)
+		const maxRetries = 3
 
-		// Wait for acknowledgment with a timeout
-		select {
-		case ack := <-ackChannel:
-			if ack {
-				sio.logger.Info("Received acknowledgment for this chunk")
-			} else {
-				sio.logger.Warn("Failed to receive acknowledgment for this chunk")
-				return errors.New("failed to receive valid acknowledgment from Arduino for a chunk")
+	ackLoop:
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			sio.logger.Infow("Waiting for acknowledgment", "attempt", attempt, "maxRetries", maxRetries)
+
+			ackChannel := make(chan bool)
+			go sio.listenForAck(ackChannel)
+
+			// Wait for acknowledgment with a timeout
+			select {
+			case ack := <-ackChannel:
+				if ack {
+					sio.logger.Info("Received acknowledgment for this chunk")
+					break ackLoop // Acknowledgment ontvangen, stop met proberen
+				} else {
+					sio.logger.Warnw("Failed to receive acknowledgment for this chunk", "attempt", attempt)
+				}
+			case <-time.After(10 * time.Second): // Verhoog timeout naar 10 seconden
+				sio.logger.Warnw("Timeout waiting for acknowledgment from Arduino", "attempt", attempt)
 			}
-		case <-time.After(5 * time.Second): // 5-second timeout
-			return errors.New("timeout waiting for acknowledgment from Arduino")
+			// Als dit de laatste poging is, escaleer naar een fout
+			if attempt == maxRetries {
+				sio.logger.Error("Exceeded maximum retries for acknowledgment")
+				return errors.New("failed to receive acknowledgment after maximum retries")
+			}
+
+			// Optioneel: Wacht een korte tijd voordat je opnieuw probeert
+			time.Sleep(1 * time.Second)
 		}
 	}
 
@@ -478,7 +493,18 @@ func (sio *SerialIO) listenForAck(ackChannel chan bool) {
 			return
 		case line := <-lineChannel:
 			// Parse incoming packet/line
+			sio.logger.Info("Received line from Arduino ", "line: ", line)
 			command, payload, MatchCRC := ParsePacket([]byte(line))
+			sio.logger.Debugw("Parsed packet details",
+				"header", line[0],
+				"length", line[1],
+				"command", line[2],
+				"payload", line[3:len(line)-2],
+				"crc", line[len(line)-2],
+				"footer", line[len(line)-1],
+			)
+			sio.logger.Info("Length of payload: ", len(line), " | ", len(payload))
+			sio.logger.Info("Parsed packet", " | command: ", command, " | payload: ", payload, " | MatchCRC: ", MatchCRC)
 			if CommandType(command) == ACKNOWLEDGE && len(payload) > 0 && payload[0] == 1 && MatchCRC {
 				sio.logger.Info("Received acknowledgment from Arduino")
 				ackChannel <- true
@@ -487,6 +513,8 @@ func (sio *SerialIO) listenForAck(ackChannel chan bool) {
 				sio.logger.Warn("Arduino reported an error in acknowledgment")
 				ackChannel <- false
 				return
+			} else {
+				sio.logger.Warnw("Unexpected response from Arduino")
 			}
 		}
 	}

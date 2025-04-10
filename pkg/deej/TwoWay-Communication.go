@@ -1,5 +1,11 @@
 package deej
 
+import (
+	"fmt"
+
+	"github.com/sigurn/crc8"
+)
+
 // CRC8 function calculates CRC-8 using polynomial 0x07
 func calculateCRC8(data []byte) byte {
 	var crc byte = 0xFF
@@ -16,26 +22,33 @@ func calculateCRC8(data []byte) byte {
 	return crc
 }
 
-// ParsePacket parses a packet and returns header, command, payload, and CRC.
-func ParsePacket(data []byte) (byte, []byte, bool) {
-	if len(data) < 5 {
-		return 0, nil, false
+func ParsePacket(packet []byte) (byte, []byte, bool) {
+	length := len(packet) - 2
+	// Controleer minimale lengte (header + lengte + commando + CRC + footer)
+	if len(packet) < 5 {
+		return 99, nil, false
+	}
+	// Controleer header en footer
+	if packet[0] != 0xAA || packet[length] != 0x55 {
+		fmt.Printf("Invalid packet: %v | %v\n", packet[0], packet)
+
+		return 88, nil, false
 	}
 
-	if data[0] != PACKET_HEADER || data[len(data)-1] != PACKET_FOOTER {
-		return 0, nil, false
+	if len(packet) != length+2 {
+		return 77, nil, false
 	}
 
-	length := data[1]
-	if len(data) != int(length)+4 {
-		return 0, nil, false
+	// Lees commando en payload
+	command := packet[2]
+	payload := packet[3 : len(packet)-2]
+
+	// Controleer CRC
+	crc := packet[len(packet)-2]
+	calculatedCRC := crc8.Checksum(packet[2:length-2], crc8.MakeTable(crc8.CRC8_MAXIM))
+	if crc != calculatedCRC {
+		return command, payload, false
 	}
 
-	command := data[2]
-	payload := data[3 : len(data)-2]
-	receivedCRC := data[len(data)-2]
-
-	calculatedCRC := calculateCRC8(data[1 : len(data)-2])
-
-	return command, payload, calculatedCRC == receivedCRC
+	return command, payload, true
 }

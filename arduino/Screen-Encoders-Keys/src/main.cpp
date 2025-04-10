@@ -16,6 +16,7 @@ void setup() {
 
     while (!comm.configRecieved) {
         comm.receivePackage();
+        delay(1000); // Wait for a second before checking again
     }
 
 
@@ -23,11 +24,11 @@ void setup() {
 
 
 void loop() {
-        // Example payload: the string "Spotify"
-    // uint8_t simplePayload[] = {" "};
+    // Example payload: the string "Spotify"
+    // uint8_t simplePayload[] = {"Spotify"};
     // comm.sendPacket(0x01, simplePayload, 1);
 
-    delay(5000);
+    // delay(5000);
     
     
 }

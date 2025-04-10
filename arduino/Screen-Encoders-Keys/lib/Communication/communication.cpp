@@ -33,7 +33,7 @@ void Communication::sendPacket(uint8_t command, uint8_t* payload, uint8_t length
     // Print packet contents for debugging
     for (uint8_t i = 0; i <= packetLength + 2; i++) {
         Serial.print("0x");
-        if (packet[i] < 0x10) Serial.print("0");
+        if (packet[i] < 0x10)   {Serial.print("0");}
         Serial.print(packet[i], HEX);
         Serial.print(" ");
     }
@@ -43,53 +43,53 @@ void Communication::sendPacket(uint8_t command, uint8_t* payload, uint8_t length
 void Communication::receivePackage() {
     if (Serial.available() > 0) {
         uint8_t receivedByte = Serial.read();
+        sendAcknowledge(true);
+        // switch (state) {
+        //     case WAIT_HEADER:
+        //         if (receivedByte == PACKET_HEADER) {
+        //             state = GET_LENGTH;
+        //         }
+        //         break;
 
-        switch (state) {
-            case WAIT_HEADER:
-                if (receivedByte == PACKET_HEADER) {
-                    state = GET_LENGTH;
-                }
-                break;
+        //     case GET_LENGTH:
+        //         packetLength = receivedByte;
+        //         state = GET_COMMAND;
+        //         break;
 
-            case GET_LENGTH:
-                packetLength = receivedByte;
-                state = GET_COMMAND;
-                break;
+        //     case GET_COMMAND:
+        //         commandByte = receivedByte;
+        //         payloadIndex = 0;
+        //         state = (packetLength > 3) ? GET_PAYLOAD : GET_CRC;
+        //         break;
 
-            case GET_COMMAND:
-                commandByte = receivedByte;
-                payloadIndex = 0;
-                state = (packetLength > 3) ? GET_PAYLOAD : GET_CRC;
-                break;
+        //     case GET_PAYLOAD:
+        //         payload[payloadIndex++] = receivedByte;
+        //         if (payloadIndex == packetLength - 3) {
+        //             state = GET_CRC;
+        //         }
+        //         break;
 
-            case GET_PAYLOAD:
-                payload[payloadIndex++] = receivedByte;
-                if (payloadIndex == packetLength - 3) {
-                    state = GET_CRC;
-                }
-                break;
+        //     case GET_CRC:
+        //         receivedCRC = receivedByte;
+        //         state = GET_FOOTER;
+        //         break;
 
-            case GET_CRC:
-                receivedCRC = receivedByte;
-                state = GET_FOOTER;
-                break;
-
-            case GET_FOOTER:
-                if (receivedByte == PACKET_FOOTER) {
-                    crc8.reset();
-                    crc8.add(&commandByte, 1); // Add the command byte to CRC
-                    crc8.add(payload, packetLength - 3); // Add the payload to CRC
-                    uint8_t calculatedCRC = crc8.getCRC();
-                    if (receivedCRC == calculatedCRC) {
-                        processCommand(commandByte, payload, packetLength - 3);
-                        sendAcknowledge(true); // Should be called here
-                    } else {
-                        sendAcknowledge(false); // Should be called here
-                    }
-                }
-                state = WAIT_HEADER;
-                break;
-        }
+        //     case GET_FOOTER:
+        //         if (receivedByte == PACKET_FOOTER) {
+        //             crc8.reset();
+        //             crc8.add(&commandByte, 1); // Add the command byte to CRC
+        //             crc8.add(payload, packetLength - 3); // Add the payload to CRC
+        //             uint8_t calculatedCRC = crc8.getCRC();
+        //             if (receivedCRC == calculatedCRC) {
+        //                 // processCommand(commandByte, payload, packetLength - 3);
+        //                 sendAcknowledge(true); // Should be called here
+        //             } else {
+        //                 sendAcknowledge(false); // Should be called here
+        //             }
+        //         }
+        //         state = WAIT_HEADER;
+        //         break;
+        // }
     }
 }
 
@@ -117,12 +117,12 @@ void Communication::processCommand(uint8_t command, uint8_t* payload, uint8_t le
 
 void Communication::sendAcknowledge(bool success) {
     uint8_t ackPayload[1];
-    ackPayload[0] = success ? 0x01 : 0x00; 
+    //ackPayload[0] = success ? 0x01 : 0x00; 
     if (success){
-        // uint8_t ackPayload[0] = {0x01};
+        ackPayload[0] = {0x01};
         sendPacket( ACKNOWLEDGE , ackPayload, 1);
     } else {
-        // uint8_t ackPayload[0] = {0x00};
+        ackPayload[0] = {0x00};
         sendPacket( ACKNOWLEDGE , ackPayload, 1);
     }
     
