@@ -25,10 +25,7 @@ type Deej struct {
 	config   *CanonicalConfig
 	serial   *SerialIO
 	sessions *sessionMap
-<<<<<<< HEAD
 	encoder  *Encoder
-=======
->>>>>>> 16434fe (No idea what this is at all)
 
 	stopChannel chan bool
 	version     string
@@ -210,22 +207,3 @@ func (d *Deej) stop() error {
 
 	return nil
 }
-<<<<<<< HEAD
-=======
-
-func handleCommands(deej *Deej, command string) {
-	// Get the sessionMap from the Deej instance
-	sessionMap := deej.sessions
-
-	// Iterate over all sessions in the sessionMap
-	for _, sessions := range sessionMap.m {
-		for _, session := range sessions {
-			// Get the SessionCommandHandler for the current session
-			sessionCommandHandler := session.GetSessionCommandHandler()
-
-			// Handle the command using the SessionCommandHandler
-			sessionCommandHandler.HandleCommand(command)
-		}
-	}
-}
->>>>>>> 16434fe (No idea what this is at all)

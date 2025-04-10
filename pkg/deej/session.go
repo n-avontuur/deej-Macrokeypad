@@ -6,23 +6,11 @@ import (
 	"go.uber.org/zap"
 )
 
-<<<<<<< HEAD
-=======
-type SessionCommandHandler interface {
-	HandleCommand(command string)
-}
-
->>>>>>> 16434fe (No idea what this is at all)
 // Session represents a single addressable audio session
 type Session interface {
 	GetVolume() float32
 	SetVolume(v float32) error
 
-<<<<<<< HEAD
-=======
-	GetSessionCommandHandler() SessionCommandHandler
-
->>>>>>> 16434fe (No idea what this is at all)
 	// TODO: future mute support
 	// GetMute() bool
 	// SetMute(m bool) error

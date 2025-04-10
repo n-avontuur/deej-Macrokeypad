@@ -5,6 +5,7 @@ package deej
 
 import (
 	"fmt"
+	"strings"
 	// Import any other necessary packages
 )
 
@@ -20,26 +21,12 @@ func (wsch *WindowsSessionCommandHandler) HandleCommand(command string) {
 
 func handleKeyCommand(deej Deej, page string, key int) {
 	// Access the CommandPages field from the CanonicalConfig
-	commandPages := deej.config.CommandPages
+	Pages := deej.config.Pages
 
-	// Check if the requested page exists in the CommandPages map
-	pageCommands, ok := commandPages[page]
-	if !ok {
-		// Handle the case where the page doesn't exist
-		fmt.Printf("Page '%s' not found in CommandPages\n", page)
-		return
-	}
+	command := Pages[1].Grid[0][1].Command
+	commandType := strings.Split(command, " ")[0]
 
-	// Check if the requested key exists in the page's command map
-	command, ok := pageCommands[key]
-	if !ok {
-		// Handle the case where the key doesn't exist
-		fmt.Printf("Key '%d' not found in page '%s'\n", key, page)
-		return
-	}
-
-	// Execute the command
-	executeCommand(deej, command.Type, command.Command)
+	executeCommand(deej, commandType, command)
 }
 
 func executeCommand(deej Deej, commandType, commandValue string) {
