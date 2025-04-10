@@ -417,64 +417,48 @@ func (sio *SerialIO) sendPacket(command CommandType, payload []byte) error {
 }
 
 func (sio *SerialIO) initializeConnection() error {
-	const maxPacketSize = 64 // Set this according to the maximum payload size Arduino can handle
-	serializedPages, err := json.Marshal(sio.deej.config.Pages)
+	payloadChunk := []byte{0x99}
+
+	// Log the chunk being sent
+	sio.logger.Info("Preparing to send configuration packet chunk: ", string(payloadChunk))
+
+	// Send the payload chunk to Arduino
+	sio.logger.Info("Sending configuration packet to Arduino (chunked)")
+	err := sio.sendPacket(CMD_ANOTHER_COMMAND, payloadChunk)
 	if err != nil {
-		sio.logger.Warn("Failed to serialize configuration data", "error", err)
+		sio.logger.Warn("Failed to send configuration packet chunk", "error", err)
 		return err
 	}
 
-	// Divide serializedPages into chunks if necessary
-	for i := 0; i < len(serializedPages); i += maxPacketSize {
-		end := i + maxPacketSize
-		if end > len(serializedPages) {
-			end = len(serializedPages)
-		}
+	const maxRetries = 3
 
-		// Extract chunk of payload
-		payloadChunk := serializedPages[i:end]
+ackLoop:
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		sio.logger.Infow("Waiting for acknowledgment", "attempt", attempt, "maxRetries", maxRetries)
 
-		// Log the chunk being sent
-		sio.logger.Info("Preparing to send configuration packet chunk", "start", i, "end", end, "chunk", string(payloadChunk))
+		ackChannel := make(chan bool)
+		go sio.listenForAck(ackChannel)
 
-		// Send the payload chunk to Arduino
-		sio.logger.Info("Sending configuration packet to Arduino (chunked)")
-		err := sio.sendPacket(CONFIG_NEEDED, payloadChunk)
-		if err != nil {
-			sio.logger.Warn("Failed to send configuration packet chunk", "error", err)
-			return err
-		}
-
-		const maxRetries = 3
-
-	ackLoop:
-		for attempt := 1; attempt <= maxRetries; attempt++ {
-			sio.logger.Infow("Waiting for acknowledgment", "attempt", attempt, "maxRetries", maxRetries)
-
-			ackChannel := make(chan bool)
-			go sio.listenForAck(ackChannel)
-
-			// Wait for acknowledgment with a timeout
-			select {
-			case ack := <-ackChannel:
-				if ack {
-					sio.logger.Info("Received acknowledgment for this chunk")
-					break ackLoop // Acknowledgment ontvangen, stop met proberen
-				} else {
-					sio.logger.Warnw("Failed to receive acknowledgment for this chunk", "attempt", attempt)
-				}
-			case <-time.After(10 * time.Second): // Verhoog timeout naar 10 seconden
-				sio.logger.Warnw("Timeout waiting for acknowledgment from Arduino", "attempt", attempt)
+		// Wait for acknowledgment with a timeout
+		select {
+		case ack := <-ackChannel:
+			if ack {
+				sio.logger.Info("Received acknowledgment for this chunk")
+				break ackLoop // Acknowledgment ontvangen, stop met proberen
+			} else {
+				sio.logger.Warnw("Failed to receive acknowledgment for this chunk", "attempt", attempt)
 			}
-			// Als dit de laatste poging is, escaleer naar een fout
-			if attempt == maxRetries {
-				sio.logger.Error("Exceeded maximum retries for acknowledgment")
-				return errors.New("failed to receive acknowledgment after maximum retries")
-			}
-
-			// Optioneel: Wacht een korte tijd voordat je opnieuw probeert
-			time.Sleep(1 * time.Second)
+		case <-time.After(10 * time.Second): // Verhoog timeout naar 10 seconden
+			sio.logger.Warnw("Timeout waiting for acknowledgment from Arduino", "attempt", attempt)
 		}
+		// Als dit de laatste poging is, escaleer naar een fout
+		if attempt == maxRetries {
+			sio.logger.Error("Exceeded maximum retries for acknowledgment")
+			return errors.New("failed to receive acknowledgment after maximum retries")
+		}
+
+		// Optioneel: Wacht een korte tijd voordat je opnieuw probeert
+		time.Sleep(1 * time.Second)
 	}
 
 	sio.logger.Info("Connection initialized successfully with all configuration data")
