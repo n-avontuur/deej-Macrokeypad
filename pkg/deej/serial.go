@@ -116,10 +116,11 @@ func (sio *SerialIO) Start() error {
 	namedLogger.Infow("Connected", "conn", sio.conn)
 	sio.connected = true
 
-	sio.initializeConnection()
-
+	if err := sio.initializeConnection(); err != nil {
+		return err
+	}
 	// Start reading from the connection
-	go sio.resumeReading()
+	//go sio.resumeReading()
 
 	return nil
 }
@@ -192,59 +193,10 @@ func (sio *SerialIO) close(logger *zap.SugaredLogger) {
 	sio.connected = false
 }
 
-func (sio *SerialIO) readLine(logger *zap.SugaredLogger, reader *bufio.Reader) chan string {
-	ch := make(chan string)
-
-	go func() {
-		for {
-			line, err := reader.ReadString('\n')
-			if err != nil {
-
-				if sio.deej.Verbose() {
-					logger.Warnw("Failed to read line from serial", "error", err, "line", line)
-				}
-
-				// just ignore the line, the read loop will stop after this
-				return
-			}
-
-			if sio.deej.Verbose() {
-				logger.Debugw("Read new line", "line", line)
-			}
-
-			// deliver the line to the channel
-			ch <- line
-		}
-	}()
-
-	return ch
-}
-
-func (sio *SerialIO) sendLine(line string) error {
-	if !sio.connected {
-		return errors.New("serial: not connected")
-	}
-
-	// Stop reading temporarily by closing the current reader.
-	sio.stopChannel <- true
-
-	// Send the line over the serial connection.
-	_, err := sio.conn.Write([]byte(line + "\r\n"))
-	if err != nil {
-		sio.logger.Warnw("Failed to send line to serial", "error", err, "line", line)
-		return err
-	}
-
-	// Resume reading after sending the data.
-	go sio.resumeReading()
-
-	return nil
-}
-
 func (sio *SerialIO) resumeReading() {
 	namedLogger := sio.logger.Named(strings.ToLower(sio.connOptions.PortName))
 	connReader := bufio.NewReader(sio.conn)
-	lineChannel := sio.readLine(namedLogger, connReader)
+	lineChannel := sio.readBytes(namedLogger, connReader)
 
 	for {
 		select {
@@ -252,139 +204,10 @@ func (sio *SerialIO) resumeReading() {
 			sio.close(namedLogger)
 			return
 		case line := <-lineChannel:
-			sio.handleLine(namedLogger, line)
+			sio.handleBytes(line)
 		}
 	}
 }
-
-func (sio *SerialIO) handleLine(logger *zap.SugaredLogger, line string) {
-
-	fmt.Printf("%s", line)
-
-	bytes, err := ConvertHexStringToBytes(line)
-	// for i := 0; i < len(bytes); i++ {
-	// 	fmt.Printf("data[%d]: [0x%02X] || ", i, bytes[i])
-	// }
-	// fmt.Println("!! END !!")
-
-	// Check for conversion errors
-	if err != nil {
-		logger.Warn("Error during conversion: %v", err)
-		return
-	}
-
-	// Check if the received line is too short
-	if len(bytes) < 5 { // Minimum packet size: header + length + command + CRC + footer
-		logger.Warn("Received line too short to be a valid packet")
-		return
-	}
-
-	// Check for valid header and footer
-	if bytes[0] != PACKET_HEADER {
-		logger.Warn("Invalid PACKET_HEADER structure")
-		return
-	}
-
-	if bytes[len(bytes)-1] != PACKET_FOOTER {
-		logger.Warn("Invalid PACKET_FOOTER structure")
-		return
-	}
-
-	command, payload, MatchCRC := ParsePacket(bytes)
-	//fmt.Printf("command, payload, MatchCRC : %x, %x, %s", command, payload, MatchCRC)
-	if MatchCRC {
-		CorrectMatch := []byte{1}
-		sio.sendPacket(ACKNOWLEDGE, CorrectMatch)
-		handlePayload(command, payload)
-		return
-	} else {
-		CorrectMatch := []byte{0}
-		logger.Warn("CRC mismatch")
-		sio.sendPacket(ACKNOWLEDGE, CorrectMatch)
-	}
-
-	//// Temperatie removed, should be added back in to
-	// var encoderLines []string
-
-	// // for each slider:
-	// for sliderIdx, stringValue := range encoderLines {
-
-	// 	// convert string values to integers ("1023" -> 1023)
-	// 	number, error := strconv.Atoi(stringValue)
-	// 	if error != nil {
-	// 		return
-	// 	}
-
-	// 	// turns out the first line could come out dirty sometimes (i.e. "4558|925|41|643|220")
-	// 	// so let's check the first number for correctness just in case
-	// 	if sliderIdx == 0 && number > 1023 {
-	// 		sio.logger.Debugw("Got malformed line from serial, ignoring", "line", line)
-	// 		return
-	// 	}
-
-	// 	// map the value from raw to a "dirty" float between 0 and 1 (e.g. 0.15451...)
-	// 	dirtyFloat := float32(number) / 1023.0
-
-	// 	// normalize it to an actual volume scalar between 0.0 and 1.0 with 2 points of precision
-	// 	normalizedScalar := util.NormalizeScalar(dirtyFloat)
-
-	// 	// if sliders are inverted, take the complement of 1.0
-	// 	if sio.deej.config.InvertSliders {
-	// 		normalizedScalar = normalizedScalar - 1
-	// 	}
-
-	// 	if sio.currentSliderPercentValues[sliderIdx] == normalizedScalar {
-	// 		return
-	// 	}
-
-	// 	if Encoders[sliderIdx].functionName == "controlVolume" {
-	// 		volumeDifference := sio.currentSliderPercentValues[sliderIdx] - normalizedScalar
-	// 		//fmt.Printf("Set new volume %f for slider[%d] \n ", sio.currentSliderPercentValues[sliderIdx], sliderIdx)
-	// 		if volumeDifference <= 5 || volumeDifference >= -5 {
-	// 			Encoders[sliderIdx].function(sio.deej, sliderIdx, normalizedScalar)
-	// 		} else {
-	// 			sio.sendLine("625|625") // Should be extended is not correct now.
-	// 		}
-	// 		return
-	// 	} else {
-	// 		fmt.Printf(" function name is : %s \n", Encoders[sliderIdx].functionName)
-	// 	}
-	// }
-}
-
-// ConvertHexStringToBytes converts a space-separated hex string to a byte slice.
-func ConvertHexStringToBytes(hexStr string) ([]byte, error) {
-	// Split the string into individual hex values
-	hexStrings := strings.Fields(hexStr) // Split by whitespace
-
-	// Create a byte slice to store the result
-	bytes := make([]byte, len(hexStrings))
-
-	// Convert each hex value to a byte
-	for i, hex := range hexStrings {
-		// Remove the '0x' prefix if present
-		hex = strings.TrimPrefix(hex, "0x")
-
-		// Check if the hex string is valid
-		if len(hex) != 2 {
-			return nil, fmt.Errorf("invalid hex value: %s", hex)
-		}
-
-		// Parse the hex string as a byte
-		var b byte
-		_, err := fmt.Sscanf(hex, "%2X", &b)
-		if err != nil {
-			return nil, fmt.Errorf("error parsing hex value %s: %v", hex, err)
-		}
-
-		// Store the byte in the slice
-		bytes[i] = b
-	}
-
-	return bytes, nil
-}
-
-// added function for two way communication
 
 func (sio *SerialIO) sendPacket(command CommandType, payload []byte) error {
 	if !sio.connected {
@@ -404,12 +227,14 @@ func (sio *SerialIO) sendPacket(command CommandType, payload []byte) error {
 	packet[4+len(payload)] = PACKET_FOOTER
 
 	// Log the packet details
-	sio.logger.Debugw("Sending packet", "command", command, "payload", payload, "crc", crc)
-
+	sio.logger.Info("Sending packet", "command:", command, " payload:", payload, " crc:", crc)
+	sio.logger.Info("Full packet: ", packet)
 	// Send the packet over the serial connection
+
 	if _, err := sio.conn.Write(packet); err != nil {
 		sio.logger.Warnw("Failed to send packet to serial", "error", err)
 		return err
+	} else {
 	}
 
 	sio.logger.Debug("Packet sent successfully")
@@ -420,7 +245,7 @@ func (sio *SerialIO) initializeConnection() error {
 	payloadChunk := []byte{0x99}
 
 	// Log the chunk being sent
-	sio.logger.Info("Preparing to send configuration packet chunk: ", string(payloadChunk))
+	sio.logger.Info("Preparing to send configuration packet chunk: ", payloadChunk)
 
 	// Send the payload chunk to Arduino
 	sio.logger.Info("Sending configuration packet to Arduino (chunked)")
@@ -468,7 +293,7 @@ ackLoop:
 func (sio *SerialIO) listenForAck(ackChannel chan bool) {
 	namedLogger := sio.logger.Named(strings.ToLower(sio.connOptions.PortName))
 	connReader := bufio.NewReader(sio.conn)
-	lineChannel := sio.readLine(namedLogger, connReader)
+	lineChannel := sio.readBytes(namedLogger, connReader)
 
 	for {
 		select {
@@ -476,29 +301,14 @@ func (sio *SerialIO) listenForAck(ackChannel chan bool) {
 			sio.close(namedLogger)
 			return
 		case line := <-lineChannel:
-			// Parse incoming packet/line
-			sio.logger.Info("Received line from Arduino ", "line: ", line)
-			command, payload, MatchCRC := ParsePacket([]byte(line))
-			sio.logger.Debugw("Parsed packet details",
-				"header", line[0],
-				"length", line[1],
-				"command", line[2],
-				"payload", line[3:len(line)-2],
-				"crc", line[len(line)-2],
-				"footer", line[len(line)-1],
-			)
-			sio.logger.Info("Length of payload: ", len(line), " | ", len(payload))
-			sio.logger.Info("Parsed packet", " | command: ", command, " | payload: ", payload, " | MatchCRC: ", MatchCRC)
-			if CommandType(command) == ACKNOWLEDGE && len(payload) > 0 && payload[0] == 1 && MatchCRC {
-				sio.logger.Info("Received acknowledgment from Arduino")
+			// Handle the command
+			command, payload, MatchCRC := sio.ParsePacket(line)
+			if CommandType(command) == ACKNOWLEDGE && MatchCRC {
+				sio.logger.Info("Received ACKNOWLEDGE command", "payload", payload)
 				ackChannel <- true
-				return
-			} else if CommandType(command) == ACKNOWLEDGE && len(payload) > 0 && payload[0] == 0 && !MatchCRC {
-				sio.logger.Warn("Arduino reported an error in acknowledgment")
-				ackChannel <- false
-				return
 			} else {
-				sio.logger.Warnw("Unexpected response from Arduino")
+				sio.logger.Info("Received non-ACKNOWLEDGE command")
+				ackChannel <- false
 			}
 		}
 	}
@@ -518,47 +328,57 @@ func (sio *SerialIO) sendPagesToArduino() error {
 	return nil
 }
 
-func (sio *SerialIO) HandleEncoderValues(line string) {
-	//var encoderLines []string
-	if !expectedLinePattern.MatchString(line) {
-		fmt.Printf("Line not matching pattern")
+func (sio *SerialIO) handleBytes(data []byte) {
+	// Log de ontvangen bytes
+	sio.logger.Info("Handling received bytes:", data)
+
+	// Controleer of het pakket geldig is
+	if len(data) < 6 { // Minimale pakketgrootte: header + lengte + commando + CRC + footer
+		sio.logger.Info("Received packet too short to be valid")
 		return
 	}
 
-	// trim the suffix
-	line = strings.TrimSuffix(line, "\r\n")
-
-	// split on pipe (|), this gives a slice of numerical strings between "0" and "1023"
-	splitLine := strings.Split(line, "|")
-
-	//Added code so that lasted element gets split of. This because the last element is the key for sending commands.
-	if len(splitLine) > 0 {
-		//This was to for splitting the command from the slider values
-		lastIdx := len(splitLine) - 1
-		lastElement := splitLine[lastIdx]
-		sio.deej.receiveKey(lastElement)
-		//remove the last element because this it the key-command
-
-		if len(splitLine) > 0 {
-			encoderLines := splitLine[:len(splitLine)-1]
-			fmt.Printf("encoderLine: %s", encoderLines)
-		}
+	if data[0] != PACKET_HEADER || data[len(data)-1] != PACKET_FOOTER {
+		sio.logger.Info("Invalid packet structure")
+		return
 	}
-	numberOfMappedSliders := 0
-	sio.deej.config.SliderMapping.iterate(func(sliderIdx int, slider []string) {
-		numberOfMappedSliders += 1
-	})
 
-	// update our slider count, if needed - this will send slider move events for all
-	if numberOfMappedSliders != sio.lastKnownNumSliders {
-		setupEncoderAmount(numberOfMappedSliders)
-		fmt.Printf("Detected sliders", "amount", numberOfMappedSliders)
-		sio.lastKnownNumSliders = numberOfMappedSliders
-		sio.currentSliderPercentValues = make([]float32, numberOfMappedSliders)
-		// reset everything to be an impossible value to force the slider move event later
-		for idx := range sio.currentSliderPercentValues {
-			sio.currentSliderPercentValues[idx] = -1.0
-		}
-		fmt.Printf("last know number of sliders : %f", sio.currentSliderPercentValues)
+	// Parse het pakket
+	command, payload, MatchCRC := sio.ParsePacket(data)
+	sio.logger.Info("Parsed packet details", "command", command, "payload", payload, "MatchCRC", MatchCRC)
+
+	if MatchCRC {
+		// sio.sendPacket(ACKNOWLEDGE, []byte{1})
+		sio.logger.Info("CRC correct")
+		sio.handlePayload(command, payload)
+	} else {
+		sio.logger.Info("CRC mismatch")
+		// sio.sendPacket(ACKNOWLEDGE, []byte{0})
 	}
+}
+
+func (sio *SerialIO) readBytes(logger *zap.SugaredLogger, reader *bufio.Reader) chan []byte {
+	ch := make(chan []byte)
+
+	go func() {
+		buffer := make([]byte, 6) // Pas de bufferlengte aan op basis van je pakketgrootte
+		for {
+			n, err := reader.Read(buffer)
+			if err != nil {
+				if sio.deej.Verbose() {
+					logger.Warnw("Failed to read bytes from serial", "error", err)
+				}
+				return
+			}
+
+			if sio.deej.Verbose() {
+				logger.Debugw("Read new bytes", "bytes", buffer[:n])
+			}
+
+			// Stuur de gelezen bytes naar het kanaal
+			ch <- buffer[:n]
+		}
+	}()
+
+	return ch
 }

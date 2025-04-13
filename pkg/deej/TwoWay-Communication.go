@@ -1,8 +1,6 @@
 package deej
 
 import (
-	"fmt"
-
 	"github.com/sigurn/crc8"
 )
 
@@ -22,15 +20,15 @@ func calculateCRC8(data []byte) byte {
 	return crc
 }
 
-func ParsePacket(packet []byte) (byte, []byte, bool) {
+func (sio *SerialIO) ParsePacket(packet []byte) (byte, []byte, bool) {
 	length := len(packet) - 2
 	// Controleer minimale lengte (header + lengte + commando + CRC + footer)
 	if len(packet) < 5 {
 		return 99, nil, false
 	}
 	// Controleer header en footer
-	if packet[0] != 0xAA || packet[length] != 0x55 {
-		fmt.Printf("Invalid packet: %v | %v\n", packet[0], packet)
+	if packet[0] != 170 || packet[length] != 85 {
+		sio.logger.Info("Invalid packet: %v | %v\n", packet[0], packet[length])
 
 		return 88, nil, false
 	}

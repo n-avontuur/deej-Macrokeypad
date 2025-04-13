@@ -149,7 +149,7 @@ func (deej *Deej) handleCommands(key int) {
 		deej.assignFunctionToEncoder(strings.Split(splitLine[0], "-")[1], splitLine[1], splitLine[2])
 
 	case "sendLine":
-		deej.serial.sendLine("625|1")
+		//deej.serial.sendLine("625|1")
 
 	case "TypeLetter4":
 		fmt.Println("TypeLetter4")
